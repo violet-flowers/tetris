@@ -39,6 +39,8 @@ GRID_X_OFFSET = 120  # Offset to shift grid right, leaving space for hold displa
 # Initialize grid
 grid = [[BLACK for _ in range(GRID_WIDTH)] for _ in range(SCREEN_HEIGHT // BLOCK_SIZE)]
 
+score = 0
+fall_speed = 500  # milliseconds
 
 
 # Function to draw the grid and placed blocks
@@ -57,16 +59,41 @@ def check_collision(shape, offset):
         for x, cell in enumerate(row):
             if cell:
                 new_x, new_y = x + off_x, y + off_y
-                if new_x < 0 or new_x >= len(grid[0]) or new_y >= len(grid) or grid[new_y][new_x] != BLACK:
+                # Ensure new_x and new_y are within valid bounds
+                if new_x < 0 or new_x >= GRID_WIDTH or new_y >= len(grid):
+                    return True
+                if new_y >= 0 and grid[new_y][new_x] != BLACK:  # Avoid accessing negative indices
                     return True
     return False
 
+
+
 # Clear full lines
 def clear_lines():
-    global grid
-    grid = [row for row in grid if any(color == BLACK for color in row)]
-    while len(grid) < SCREEN_HEIGHT // BLOCK_SIZE:
-        grid.insert(0, [BLACK for _ in range(SCREEN_WIDTH // BLOCK_SIZE - 5)])
+    global grid, score
+    lines_cleared = 0
+    new_grid = []
+    for row in grid:
+        if all(cell != BLACK for cell in row):
+            lines_cleared += 1
+        else:
+            new_grid.append(row)
+    while len(new_grid) < SCREEN_HEIGHT // BLOCK_SIZE:
+        new_grid.insert(0, [BLACK for _ in range(GRID_WIDTH)])
+    grid = new_grid
+
+    # Update score based on standard Tetris rules
+    if lines_cleared == 1:
+        score += 100
+    elif lines_cleared == 2:
+        score += 300
+    elif lines_cleared == 3:
+        score += 500
+    elif lines_cleared == 4:
+        score += 800
+
+    return lines_cleared
+
 
 # Rotate shape
 def rotate_shape(shape):
@@ -102,17 +129,24 @@ class Tetrimino:
         self.lock_piece()
 
     def lock_piece(self):
-        global current_tetrimino, hold_locked
+        global current_tetrimino, hold_locked, fall_speed
         for y, row in enumerate(self.shape):
             for x, cell in enumerate(row):
                 if cell:
                     grid[self.y + y][self.x + x] = self.color
         clear_lines()
+
+        # Dynamic fall speed based on score
+        base_speed = 500
+        speed_reduction = min(score // 25, 450)
+        fall_speed = max(50, base_speed - speed_reduction)
+
         current_tetrimino = next_tetriminos.pop(0)
         next_tetriminos.append(Tetrimino())
-        hold_locked = False  # Allow holding again
+        hold_locked = False
         if check_collision(current_tetrimino.shape, (current_tetrimino.x, current_tetrimino.y)):
             pygame.quit()
+
 
 def draw_queue(surface):
     font = pygame.font.Font(None, 24)
@@ -173,6 +207,10 @@ while running:
     draw_grid(screen)
     draw_queue(screen)
     draw_hold(screen)
+    # Draw score
+    font = pygame.font.Font(None, 36)
+    score_text = font.render(f"Score: {score}", True, WHITE)
+    screen.blit(score_text, (10, SCREEN_HEIGHT - 40))
     current_tetrimino.draw(screen)
     pygame.display.flip()
 
@@ -196,7 +234,7 @@ while running:
             if event.key == pygame.K_c:
                 hold_current_piece()
 
-    if fall_time > 500:
+    if fall_time > fall_speed:
         if not check_collision(current_tetrimino.shape, (current_tetrimino.x, current_tetrimino.y + 1)):
             current_tetrimino.y += 1
         else:
